@@ -41,6 +41,7 @@ logMessage() {
   shift
   local logentry="$now $level $*"
   # If log file not writable, redirect output to console
+  touch $DISKSETUP_LOG
   if [ -w $DISKSETUP_LOG ]; then
     echo $logentry >> $DISKSETUP_LOG
   else
