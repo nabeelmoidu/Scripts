@@ -138,8 +138,8 @@ formatDisks()  {
   echo "======================================="
   read -p "Confirm? " -r
   echo
-  if [[ $REPLY =~ ^[Yy]$ ]]
-    then
+  if [[ $REPLY =~ ^[Yy]$ ]] | [[ $REPLY =~ ^yes$ ]]
+  then
     for disk in "${DISK_ARRAY[@]}"
       do 
       if [ -b "$disk" ]; then
@@ -305,7 +305,8 @@ while [ "${1+isset}" ]; do
       then
         echo "Missing log file argument. Using default value ${DISKSETUP_LOG} "
         logMessage WARN "Missing log file argument. Using default value for DISKSETUP LOG: ${DISKSETUP_LOG} " 
-      elif [ -w $2 ] 
+      elif [ -w $2 ]
+      then 
         DISKSETUP_LOG=$2
       else
         echo "Log file provided not writable. Using default value ${DISKSETUP_LOG} "
