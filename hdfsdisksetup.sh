@@ -144,7 +144,7 @@ formatDisks()  {
     for disk in "${DISK_ARRAY[@]}"
       do 
       if [ -b "$disk" ]; then
-        if mount | grep "${disk}"
+        if mount | grep -q "${disk}"
         then
            logMessage WARN "${disk} is already mounted. Will not format ${disk}" && continue
         fi 
@@ -223,9 +223,9 @@ makeHDFSdirs()  {
     logMessage INFO "Creating HDFS directories under $mount_path/hdfs"
     mkdir -p "${mount_path}/hdfs/dn"
     if [ "$mount_path" == "${MOUNT_ROOT}/0" ]; then
-      mkdir -p "${mount_path}/hdfs/nn"
-      mkdir -p "${mount_path}/hdfs/snn"
-      chown -R hdfs:hadoop "${mount_path}/hdfs"
+      mkdir -p "${mount_path}/hdfs/nn" 2>>$DISKSETUP_LOG
+      mkdir -p "${mount_path}/hdfs/snn" 2>>$DISKSETUP_LOG
+      chown -R hdfs:hadoop "${mount_path}/hdfs" 2>>$DISKSETUP_LOG
     fi
 
 }
@@ -234,9 +234,9 @@ makeYarnDirs()  {
 
     local mount_path=${1}
     logMessage INFO "Creating YARN directories under ${mount_path}/yarn"
-    mkdir -p "${mount_path}/yarn/local"
-    mkdir -p "${mount_path}/yarn/logs"
-    chown -R yarn:hadoop "${mount_path}/yarn"
+    mkdir -p "${mount_path}/yarn/local" 2>>$DISKSETUP_LOG
+    mkdir -p "${mount_path}/yarn/logs" 2>>$DISKSETUP_LOG
+    chown -R yarn:hadoop "${mount_path}/yarn" 2>>$DISKSETUP_LOG
 }
 
 addToEtcFstab() {
