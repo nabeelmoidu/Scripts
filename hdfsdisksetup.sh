@@ -34,12 +34,18 @@ usage()  {
 # Default no arguments is just disk list creation for review.
 
 logMessage() {
-  #DATE| TIME| HOSTNAME | PROCESS(PID) | COMPONENT | SEVERITY | TRIGGER | MESSAGE
+
+  # FORMAT : "DATE | TIME | SEVERITY | MESSAGE"
   local now=`date +%Y-%m-%d\ %H:%M:%S.$(( $(date +%-N) / 1000000 ))`
   local level=$1
   shift
   local logentry="$now $level $*"
-  echo $logentry >> $DISKSETUP_LOG
+  # If log file not writable, redirect output to console
+  if [ -w $DISKSETUP_LOG ]; then
+    echo $logentry >> $DISKSETUP_LOG
+  else
+    echo $logentry
+  fi
 
 }
 
@@ -261,17 +267,18 @@ addToEtcFstab() {
 
 # main
 
-
-logMessage INFO "======================================================================================"
-logMessage INFO "                 Starting execution of script disksetup.sh "
-logMessage INFO "======================================================================================"
-
 isRoot
 amRoot=$?
 if [ $amRoot -ne 0 ]
 then
   logMessage FATAL "Cannot execute script as non-root user. Exiting " && exit 1
 fi
+
+
+
+logMessage INFO "======================================================================================"
+logMessage INFO "                 Starting execution of script disksetup.sh "
+logMessage INFO "======================================================================================"
 
 # If run without arguments, generate disk list file for review and exit.
 if [ $# -lt 1 ]
@@ -321,4 +328,3 @@ done
 # Other functions to mount disks, update fstab, create directories etc. all invoked one after other in nested calls. 
 # TODO: bring all function invocations here
 formatDisks
-
