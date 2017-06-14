@@ -14,9 +14,9 @@ The hdfsdisksetup.sh script will do the following :
 
 When executed as part of initial provisioning the script can be placed in /root and executed as root user with following syntax:
 
-{code:bash}
+```bash
 /root/disksetup.sh && /root/disksetup.sh -r /tmp/disklist
-{code}
+```
 
 The initial run without arguments generates the file /tmp/diskslist with the disks to be formatted  listed therein. The second run will do the 10 steps mentioned earlier. It's done intentionally this way to avoid accidental execution of the script which can cause data loss by formatting the disks.
 
