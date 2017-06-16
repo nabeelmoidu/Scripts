@@ -346,7 +346,7 @@ if formatDisks
 then
   for formatted_disk in "${!formatted_disks[@]}"; 
   do    
-    if ${formatted_disks[$disk]} == "Success" 
+    if ${formatted_disks[$formatted_disk]} == "Success" 
     then
       if mountDisks ${formatted_disk}
       then
@@ -364,3 +364,4 @@ else
   logMessage ERROR "No disk in the list provided could be formatted. See $DISKSETUP_LOG for errors. Exiting" && exit 1
 fi
 
+exit 0
