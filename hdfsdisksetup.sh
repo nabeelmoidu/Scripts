@@ -22,6 +22,10 @@ FILESYSTEM_TYPE="ext4"
 FORMAT_OPTIONS="-F -m 1 -T largefile -O dir_index,extent,sparse_super"
 MOUNT_OPTIONS="rw,noatime,nodelalloc"
 DISKSETUP_LOG="./disksetup.log"
+HDFS_USER="hdfs"
+YARN_USER="yarn"
+HADOOP_GROUP="hadoop"
+
 
 # First list out options
 usage()  {
@@ -126,6 +130,7 @@ formatDisks()  {
 
   getDisks
   local disk
+  local ret_val=1
   if [ ${#DISK_ARRAY[@]} -lt 1 ]
     then
        logMessage FATAL "No disks available for HDFS.Exiting" && exit 1
@@ -137,9 +142,9 @@ formatDisks()  {
     do echo "$disk"
   done
   echo "======================================="
-  read -p "Confirm? " -r
+  read -p "Confirm [Yes]?" -r
   echo
-  if [[ $REPLY =~ ^[Yy]$ ]] | [[ $REPLY =~ ^yes$ ]]
+  if [[ $REPLY =~ ^Yes$ ]] 
   then
     for disk in "${DISK_ARRAY[@]}"
       do 
@@ -151,17 +156,19 @@ formatDisks()  {
         echo "================================================="
         echo "               Formatting $disk                  "
         echo "================================================="
-        $FORMAT_CMD $FILESYSTEM_TYPE $FORMAT_OPTIONS $disk
-        if [ ${?} -eq 0 ]
+        if $FORMAT_CMD $FILESYSTEM_TYPE $FORMAT_OPTIONS $disk
         then
-          mountDisks $disk
+          formatted_disks[${disk}]="Success"
+          # If at least 1 disk successfully formatted, set return value to success
+          ret_val=0
         else
-          logMessage ERROR "Disk format failed for $disk"
+          formatted_disks[${disk}]="Fail"
         fi
       else
         logMessage WARN "No such disk or device : $disk"
       fi  
-    done
+      done
+      return $ret_val
   else
     logMessage FATAL " Please review input disklist file.Exiting " && exit 1
   fi
@@ -170,7 +177,7 @@ formatDisks()  {
 
 mountDisks() {
 
-  local mount_disk=$1 dir_name dir_num dir_list mount_path
+  local mount_disk=$1 dir_name dir_num dir_list mount_path ret_val=1
 
   if [ ! -d $MOUNT_ROOT ];
   then
@@ -204,17 +211,13 @@ mountDisks() {
   logMessage INFO  "======================================================================================"
   logMessage INFO "Mounting ${mount_disk} on ${mount_path} with options ${MOUNT_OPTIONS}"
   logMessage INFO "======================================================================================"
-  mount -t ${FILESYSTEM_TYPE} -o ${MOUNT_OPTIONS} ${mount_disk} ${mount_path}
-  if [ ${?} -eq 0 ];
+  if mount -t ${FILESYSTEM_TYPE} -o ${MOUNT_OPTIONS} ${mount_disk} ${mount_path}
   then
-    addToEtcFstab "${mount_disk}" "${mount_path}"  
-    makeHDFSdirs "${mount_path}"
-    makeYarnDirs "${mount_path}"
+    mounted_disks[${mount_disk}]="${mount_path}" && ret_val=0
   else
-    rmdir "${mount_path}"
-    logMessage ERROR "Mount failed for ${mount_disk} on ${mount_path}"
-    exit 1
+    formatted_disks[${disk}]="Fail" && ret_val=1 && rmdir "${mount_path}"
   fi
+  return $ret_val
 }
 
 makeHDFSdirs()  {
@@ -222,28 +225,37 @@ makeHDFSdirs()  {
     local mount_path=${1}
     logMessage INFO "Creating HDFS directories under $mount_path/hdfs"
     mkdir -p "${mount_path}/hdfs/dn"
-    if [ "$mount_path" == "${MOUNT_ROOT}/0" ]; then
-      mkdir -p "${mount_path}/hdfs/nn" 2>>$DISKSETUP_LOG
-      mkdir -p "${mount_path}/hdfs/snn" 2>>$DISKSETUP_LOG
-      chown -R hdfs:hadoop "${mount_path}/hdfs" 2>>$DISKSETUP_LOG
+    if [ "$mount_path" == "${MOUNT_ROOT}/0" ]
+    then
+      mkdir -p "${mount_path}/hdfs/nn" 2>>${DISKSETUP_LOG}
+      mkdir -p "${mount_path}/hdfs/snn" 2>>${DISKSETUP_LOG}
     fi
-
+    if [ getent passwd $HDFS_USER ] && [ getent passwd $HADOOP_GROUP ]
+    then
+      chown -R $HDFS_USER:$HADOOP_GROUP "${mount_path}/hdfs" 2>>${DISKSETUP_LOG}
+    else
+      logMessage ERROR "user $HDFS_USER or group $HADOOP_GROUP does not exist. Skipping change ownership step"
+    fi
 }
 
 makeYarnDirs()  {
 
     local mount_path=${1}
     logMessage INFO "Creating YARN directories under ${mount_path}/yarn"
-    mkdir -p "${mount_path}/yarn/local" 2>>$DISKSETUP_LOG
-    mkdir -p "${mount_path}/yarn/logs" 2>>$DISKSETUP_LOG
-    chown -R yarn:hadoop "${mount_path}/yarn" 2>>$DISKSETUP_LOG
+    mkdir -p "${mount_path}/yarn/local" 2>>${DISKSETUP_LOG}
+    mkdir -p "${mount_path}/yarn/logs" 2>>${DISKSETUP_LOG}
+    if [ getent passwd $YARN_USER ] && [ getent passwd $HADOOP_GROUP ]
+    then
+      chown -R $YARN_USER:$HADOOP_GROUP "${mount_path}/yarn" 2>>${DISKSETUP_LOG}
+    else
+      logMessage ERROR "user $YARN_USER or group $HADOOP_GROUP does not exist. Skipping change ownership step"
+    fi    
 }
 
 addToEtcFstab() {
 
   local disk=${1}
   local mount_path=${2}
-  #UUID=`lsblk -bo name,uuid|grep "${disk}" |tr -s " "| cut -d " " -f2`
   UUID=$(blkid -s UUID -o value ${disk})
   GREP_PATTERN=" -e ${disk} -e ${mount_path} "  
 
@@ -274,7 +286,6 @@ if [ $amRoot -ne 0 ]
 then
   logMessage FATAL "Cannot execute script as non-root user. Exiting " && exit 1
 fi
-
 
 
 logMessage INFO "======================================================================================"
@@ -329,4 +340,27 @@ done
 
 # Other functions to mount disks, update fstab, create directories etc. all invoked one after other in nested calls. 
 # TODO: bring all function invocations here
-formatDisks
+declare -A formatted_disks
+declare -A mounted_disks
+if formatDisks
+then
+  for formatted_disk in "${!formatted_disks[@]}"; 
+  do    
+    if ${formatted_disks[$disk]} == "Success" 
+    then
+      if mountDisks ${formatted_disk}
+      then
+        addToEtcFstab "${formatted_disk}" "${mounted_disks[$formatted_disk]}"  
+        makeHDFSdirs "${mounted_disks[$formatted_disk]}"
+        makeYarnDirs "${mounted_disks[$formatted_disk]}"
+      else
+        logMessage ERROR "Mount failed for ${mounted_disks[$formatted_disk]}. Skipping fstab update and HDFS/YARN directory creation"
+      fi
+    else
+      logMessage ERROR "Disk format failed for $formatted_disk."
+    fi
+  done
+else
+  logMessage ERROR "No disk in the list provided could be formatted. See $DISKSETUP_LOG for errors. Exiting" && exit 1
+fi
+
